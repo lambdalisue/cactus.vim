@@ -14,10 +14,6 @@ function! cactus#internal#window#close(winid) abort
   return s:close(a:winid)
 endfunction
 
-function! cactus#internal#window#resize(winid, height) abort
-  return s:resize(a:winid, a:height)
-endfunction
-
 if has('nvim')
   function! s:open(height, hl_group) abort
     let buf = nvim_create_buf(v:false, v:true)
@@ -42,12 +38,6 @@ if has('nvim')
   function! s:close(winid) abort
     call nvim_win_close(a:winid, v:true)
   endfunction
-
-  function! s:resize(winid, height) abort
-    call nvim_win_set_config(a:winid, {
-          \ 'height': max([1, a:height]),
-          \})
-  endfunction
 else
   function! s:open(height, hl_group) abort
     let win = popup_create('', {
@@ -66,11 +56,5 @@ else
 
   function! s:close(winid) abort
     call popup_close(a:winid)
-  endfunction
-
-  function! s:resize(winid, height) abort
-    call popup_move(a:winid, {
-          \ 'maxheight': max([1, a:height]),
-          \})
   endfunction
 endif

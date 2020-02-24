@@ -1,0 +1,38 @@
+Describe cactus#internal#query
+  Describe #split()
+    It splits by '|'
+      let expr = 'foo|bar'
+      let want = [['foo'], ['bar']]
+      let got = cactus#internal#query#split(expr)
+      Assert Equals(got, want)
+    End
+
+    It remoev leading/trailing spaces in each tokens
+      let expr = ' foo  |  bar    '
+      let want = [['foo'], ['bar']]
+      let got = cactus#internal#query#split(expr)
+      Assert Equals(got, want)
+    End
+
+    It does not split by '\|'
+      let expr = ' foo\|bar    '
+      let want = [['foo|bar']]
+      let got = cactus#internal#query#split(expr)
+      Assert Equals(got, want)
+    End
+
+    It splits by ' '
+      let expr = 'foo bar'
+      let want = [['foo', 'bar']]
+      let got = cactus#internal#query#split(expr)
+      Assert Equals(got, want)
+    End
+
+    It splits by '\ '
+      let expr = 'foo\ bar'
+      let want = [['foo bar']]
+      let got = cactus#internal#query#split(expr)
+      Assert Equals(got, want)
+    End
+  End
+End

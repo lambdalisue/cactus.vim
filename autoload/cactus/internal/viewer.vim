@@ -1,3 +1,4 @@
+let s:ESCAPE_PATTERN = '^$~.*[]\'
 let s:TICKER_INTERVAL = 10
 let s:INPUT_DELAY = 200
 
@@ -12,14 +13,15 @@ function! cactus#internal#viewer#open(candidates, ...) abort
         \ 'highlight': 'CactusWindow',
         \})
   let ns = {
-        \ 'query': '',
-        \ 'content': reverse(a:candidates[: options.threshold - 1]),
-        \ 'matches': [],
+        \ 'input': '',
+        \ 'query': [],
+        \ 'indices': v:null,
         \ 'filter_timer': 0,
         \ 'winid': winid,
         \ 'height': options.height,
         \ 'threshold': options.threshold,
         \ 'candidates': a:candidates,
+        \ 'close': { -> cactus#internal#window#close(winid) },
         \}
   call s:redraw(ns)
   let ticker = timer_start(
@@ -27,56 +29,78 @@ function! cactus#internal#viewer#open(candidates, ...) abort
         \ funcref('s:ticker', [ns]),
         \ { 'repeat': -1 },
         \)
-  let pattern = input('> ')
+  call input('> ')
   call timer_stop(ticker)
   call timer_stop(ns.filter_timer)
   call cactus#internal#window#close(winid)
   redraw | echo ''
-  return ns.matches
+  return {
+        \ 'query': ns.query,
+        \ 'indices': ns.indices,
+        \}
 endfunction
 
 function! s:ticker(ns, ...) abort
-  let query = getcmdline()
-  if a:ns.query ==# query
+  let input = getcmdline()
+  if a:ns.input ==# input
     return
   endif
   call timer_stop(a:ns.filter_timer)
-  let a:ns.query = query
-  let a:ns.filter_timer = timer_start(s:INPUT_DELAY, { -> s:filter(a:ns) })
+  let a:ns.input = input
+  let a:ns.filter_timer = timer_start(
+        \ s:INPUT_DELAY,
+        \ funcref('s:filter', [a:ns]),
+        \)
 endfunction
 
-function! s:filter(ns) abort
+function! s:filter(ns, ...) abort
   let bufnr = winbufnr(a:ns.winid)
   if bufnr is# -1
     return
   endif
-  let r = cactus#internal#filter#apply(
-        \ cactus#internal#filter#fuzzy(a:ns.query),
+  let a:ns.query = cactus#internal#query#parse(a:ns.input)
+  let a:ns.indices = cactus#internal#query#filter(
+        \ a:ns.query,
         \ a:ns.candidates,
         \ a:ns.threshold,
         \)
-  let a:ns.content = r.content
-  let a:ns.matches = r.matches
-  call s:redraw(a:ns)
+  call timer_start(0, funcref('s:redraw', [a:ns]))
 endfunction
 
-function! s:redraw(ns) abort
+function! s:redraw(ns, ...) abort
   let bufnr = winbufnr(a:ns.winid)
-  let n = len(a:ns.candidates)
-  let m = len(a:ns.content)
-  let s = n > a:ns.threshold && m >= a:ns.threshold ? '+' : ''
-  let c = extend([printf('Match: %d%s/%d', m, s, n)], a:ns.content)
-  call cactus#internal#buffer#replace(bufnr, c)
-  call cactus#internal#buffer#clear_highlights(bufnr)
-  call map(
-        \ copy(a:ns.matches),
-        \ { i, v -> cactus#internal#buffer#highlight(bufnr, 'CactusMatch', i + 1, v[1], v[2]) },
-        \)
-  call cactus#internal#window#resize(
-        \ a:ns.winid,
-        \ min([a:ns.height, len(a:ns.content) + 1]),
+  if bufnr is# -1
+    return
+  endif
+  if a:ns.indices is# v:null
+    let content = a:ns.candidates[: a:ns.threshold - 1]
+  else
+    let candidates = a:ns.candidates
+    let content = map(
+          \ copy(a:ns.indices),
+          \ { _, v -> candidates[v] },
+          \)
+  endif
+  call extend(content, repeat([''], max([0, a:ns.height - len(content)])))
+  call reverse(content)
+  call cactus#internal#buffer#replace(bufnr, content)
+
+  " XXX
+  call win_gotoid(a:ns.winid)
+  normal! G
+  syntax clear
+  execute printf(
+        \ 'silent! syntax match CactusMatch "%s"',
+        \ s:build_pattern(a:ns.query),
         \)
   redraw
+endfunction
+
+function! s:build_pattern(query) abort
+  let q = copy(a:query)
+  call map(q, { -> map(v:val, { -> escape(v:val, s:ESCAPE_PATTERN) }) })
+  call map(q, { -> join(v:val, '\|') })
+  return '\c' . escape(join(q, '\|'), '"')
 endfunction
 
 function! s:define_highlights() abort
